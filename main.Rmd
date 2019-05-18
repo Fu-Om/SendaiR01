@@ -1,16 +1,19 @@
 ---
-title: "How to DRY in ggplot2"
-author: '@fuuuumin'
+title: "ggplot でのDRY"
+author: 'SendaiR 01 @fuuuumin'
 date: "`r format(Sys.time(), '%d / %m / %Y')`"
 output:
   revealjs::revealjs_presentation:
+    pandoc_args: [
+      '--from', 'markdown-auto_identifiers'
+    ]
     theme: black
     highlight: zenburn
     transition: none
     self_contained: true
     css: slides.css
-    fig_width: 6
-    fig_height: 6
+    fig_width: 4
+    fig_height: 4
     fig_caption: false
 
   beamer_presentation:
@@ -20,7 +23,8 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo=TRUE, eval=TRUE, cache=TRUE)
-# eval=TRUE for actually run 
+library(tidyverse)
+library(survival)
 ```
 # Introduction
 
@@ -32,9 +36,9 @@ fuuuumin314
 
 @[twitter](https://twitter.com/fuuuumin314)
 
-2nd year MD residency.
+研修医
 
-Using R for 4 years. Mainly for analysisng medical data.
+R歴: ５年, 臨床データの解析
 
 </div>
 
@@ -44,36 +48,209 @@ Using R for 4 years. Mainly for analysisng medical data.
 
 </div>
 
-# Don't Repeat Yourself in ggplot2
+## DRY: Don't Repeat Yourself
+
+- 同じコードの繰り返しを避ける
+- 可読性
+- 再利用性
+
+## demo data
+
+- survival::pbc
+- 肝臓の病気に対する治療データ
+
+# Setting themes
+
+## 基本的なplot
+
+```{r, eval=FALSE}
+pbc %>% 
+  dplyr::filter(!is.na(trt)) %>% 
+  ggplot(aes(factor(trt), albumin, fill=factor(trt))) + 
+    geom_boxplot()
+```
+
+```{r, eval=TRUE, echo=FALSE, message=FALSE}
+p <- pbc %>% 
+  dplyr::filter(!is.na(trt)) %>% 
+  ggplot(aes(factor(trt), albumin, fill=factor(trt))) + 
+    geom_boxplot()
+ggsave(filename="./img/theme1.jpg", plot=p, device="jpg")
+```
+
+##
+
+![](img/theme1.jpg)  
+
+## plotできたけど……
+
+- 全体的にフォントが小さい
+- 背景のグレーを白地にしたい
+- 罫線を消したい
+- 判例を消したい
+
+など共通で設定したい事項がある
+
+## 修正してみる
+
+```{r, eval=FALSE}
+pbc %>% 
+  dplyr::filter(!is.na(trt)) %>% 
+  ggplot(aes(factor(trt), albumin, fill=factor(trt))) + 
+    geom_boxplot() +
+    theme_bw() +
+    theme(axis.text=element_text(size=16), 
+          axis.title=element_text(size=18, face="bold"), 
+          legend.position="none")
+```
+
+```{r, eval=TRUE, echo=FALSE, message=FALSE}
+p <- pbc %>% 
+  dplyr::filter(!is.na(trt)) %>% 
+  ggplot(aes(factor(trt), albumin, fill=factor(trt))) + 
+    geom_boxplot() +
+    theme_bw() +
+    theme(axis.text=element_text(size=16), 
+          axis.title=element_text(size=18, face="bold"),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          legend.position="none")
+ggsave(filename="./img/theme2.jpg", plot=p, device="jpg")
+```
+
+## 比較
+
+<div class="column1" style="float: left;">
+
+<img src="img/theme1.jpg" width="450" height="450">
+
+</div>
+
+<div class="column2" style="float: right;">
+
+<img src="img/theme2.jpg" width="450" height="450">
+
+</div>
+
+## 共通の設定にするには
+
+`theme_set()`
+
+```{r, eval=FALSE}
+my_theme <- theme_bw() + 
+  theme(axis.text=element_text(size=16), 
+    axis.title=element_text(size=18, face="bold"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position="none")
+theme_set(my_theme)
+pbc %>% 
+  dplyr::filter(!is.na(trt)) %>% 
+  ggplot(aes(factor(trt), bili, fill=factor(trt))) +
+  geom_boxplot()
+```
+
+```{r, echo=FALSE, message=FALSE}
+my_theme <- theme_bw() + 
+  theme(axis.text=element_text(size=16), 
+    axis.title=element_text(size=18, face="bold"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position="none")
+theme_set(my_theme)
+p <- pbc %>% 
+    dplyr::filter(!is.na(trt)) %>% 
+    ggplot(aes(factor(trt), bili, fill=factor(trt))) +
+  geom_boxplot()
+ggsave("./img/theme3.jpg", p, device="jpg")
+```
+
+##
+
+![](img/theme3.jpg)
 
 # Writing functions
 
-# Utilizing purrr
+## ggplotで関数を作る
 
-## どうやって？ 
-
-- 今回はgapminderデータを使います  
+```{r, eval=FALSE}
+pbc$trt <- as.factor(pbc$trt)
+pbc_box_func <- function(x, y) {
+  theme_set(my_theme)
+  pbc %>% 
+    filter(!is.na(!!sym(x))) %>% 
+    ggplot(aes(x = !!sym(x), y = !!sym(y))) +
+    geom_boxplot()
+}
+pbc_box_func("trt", "bili")
+```
 
 ```{r, echo=FALSE, message=FALSE}
-library(gapminder)
-library(tidyverse, warn.conflicts=FALSE)
-gapminder %>% 
-    str() %>% 
-    knitr::kable()
-
-gapminder %>% 
-    head() %>% 
-    knitr::kable()
+pbc$trt <- as.factor(pbc$trt)
+pbc_box_func <- function(x, y) {
+  theme_set(my_theme)
+  pbc %>% 
+    filter(!is.na(!!sym(x))) %>% 
+    ggplot(aes(x=!!sym(x), y=!!sym(y), fill=!!sym(x))) +
+    geom_boxplot()
+}
+p <- pbc_box_func("trt", "bili")
+ggsave("./img/functions1.jpg", p, device="jpg")
 ```
+
+##
+
+![](img/functions1.jpg)
+
+# Utilizing purrr
+
+## map で繰り返しを避ける
+
+```{r}
+my_vars <- set_names(c("bili", "chol", "albumin", "ast"))
+dry_plots <- purrr::map(my_vars, ~pbc_box_func("trt", .x))
+```
+
+## 
+
+```{r}
+dry_plots[[1]]
+# same as dry_plots$bili
+```
+
+##
+
+```{r}
+dry_plots[[2]]
+```
+
+##
+
+```{r}
+dry_plots[[3]]
+```
+
+##
+
+```{r}
+dry_plots[[4]]
+```
+
+## まとめ
+
+- 共通の設定を使うときには`set_theme()`
+- ggplotで関数を作るときは注意が必要
+
+詳しくはtidy evaluationで検索
+
+- 関数を繰り返すときは`purrr::map()`
 
 # Appendix
 
 ## reference
-- [gganimate - github](https://github.com/dgrtwo/gganimate)
-
-- [PLOTCON 2016: David Robinson, gganimate](https://www.youtube.com/watch?v=9Y7Y1s4-VdAce)
-
-- [チェスの動きの可視化](https://rpubs.com/dgrtwo/chess)
+- [automate exploratory plots](https://aosmith.rbind.io/2018/08/20/automating-exploratory-plots/)
+- [tidy evaluation](https://tidyeval.tidyverse.org/)
+- [スライドループ回避](https://qiita.com/mwmsnn/items/e01f36a6245617354065)
 
 ## Environment info
 
@@ -86,4 +263,3 @@ devtools::session_info()[[1]]
 ```{r}
 devtools::session_info()[[2]]
 ```
-
